@@ -9,11 +9,16 @@ SMS Warning System for Cell-culture Incubator
 SMS sent to users on defined list in the event that incubator
 conditions drift significantly out of range. This includes both
 environmental conditions and extended period with door open.
+
+TO DO:
+- Add time acquisition on startup to use for log timestamp
+
 */
 
-#include <SoftwareSerial.h>
-#include <SD.h>
 #include <SPI.h>
+#include <SD.h>
+#include <SoftwareSerial.h>
+#include <Time.h>
 
 //// ADD MOBILE NUMBERS FOR USERS THAT WILL RECEIVE SMS WARNING MESSAGES BELOW ////
 /*
@@ -41,36 +46,39 @@ const unsigned long doorTimeout = DOORTIMEOUT * 1000;
 
 const boolean debugMode = true;
 
-const int gprsRXPin = 7;
-const int gprsTXPin = 8;
+const int gprsRXPin = 2;
+const int gprsTXPin = 3;
 const int gprsPowerPin = 9;
 const int sdSlaveSelect = 10;
 const int doorPin = 2;
 
+byte userCount = 0;
+
 SoftwareSerial gprsSerial(gprsRXPin, gprsTXPin);
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(19200);
   pinMode(gprsPowerPin, OUTPUT);
   pinMode(sdSlaveSelect, OUTPUT);
 
-  gprsSerial.begin(19200);
-  gprsStartup();
-  if (debugMode) Serial.println(F("GPRS initiated."));
-  if (!SD.begin(sdSlaveSelect)) programError(2);
-  if (debugMode) Serial.println(F("SD card initiated."));
+  //gprsSerial.begin(19200);
+  //gprsStartup();
+  //if (debugMode) Serial.println(F("GPRS initiated."));
+  //if (!SD.begin(sdSlaveSelect)) programError(2);
+  //if (debugMode) Serial.println(F("SD card initiated."));
 
-  byte userCount = 0;
   if (user0[0] != 'x') userCount++;
   if (user1[0] != 'x') userCount++;
   if (user2[0] != 'x') userCount++;
   if (user3[0] != 'x') userCount++;
   if (user4[0] != 'x') userCount++;
   if (user5[0] != 'x') userCount++;
+
+  Serial.println(userCount);
 }
 
 void loop() {
-  boolean activeWarning = false;
+  /*boolean activeWarning = false;
   boolean doorState = false;
   boolean doorLastState = false;
   byte warningCode = 0;
@@ -93,7 +101,7 @@ void loop() {
   // RESPOND TO ACTIVE WARNING APPROPRIATELY BASED ON WARNING CODE
   // ENTER EMERGENCY MONITORING AND LOGGING STATE UNTIL CONDITIONS NORMALIZE
   // RESET ACTIVE WARNING BOOLEAN WHEN CONDITIONS NORMALIZE
-  // RETURN TO MAIN LOOP
+  // RETURN TO MAIN LOOP*/
 }
 
 // Send warning as SMS message. Error type defined as byte argument.
