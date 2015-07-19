@@ -12,6 +12,9 @@ environmental conditions and extended period with door open.
 
 TO DO:
 - Add time acquisition on startup to use for log timestamp
+- Add SD logging
+- Add timestamp to SD log
+- Add all analog inputs for recorder data acquisition
 
 */
 
@@ -21,23 +24,15 @@ TO DO:
 #include <Time.h>
 
 //// ADD MOBILE NUMBERS FOR USERS THAT WILL RECEIVE SMS WARNING MESSAGES BELOW ////
-/*
- * To try:
- * Array of arrays
- * Ex.
- * numberList[] = {
- * NUM1
- * NUM2
- * NUM3
- * Etc.
- * }
- */
-const char user0[11] = "2145635266";  // Hunter Allen
-const char user1[11] = "xxxxxxxxxx";  // Yousuf Ali
-const char user2[11] = "xxxxxxxxxx";  // Gillian Bradley
-const char user3[11] = "xxxxxxxxxx";  // Peggy
-const char user4[11] = "xxxxxxxxxx";  // Marisha
-const char user5[11] = "xxxxxxxxxx";  // Diana
+char* userNumbers[] = {
+  "2145635266", // Hunter Allen
+  "xxxxxxxxxx", // Yousuf Ali
+  "xxxxxxxxxx", // Gillian Bradley
+  "xxxxxxxxxx", // Peggy
+  "xxxxxxxxxx", // Marisha
+  "xxxxxxxxxx"  // Diana
+}
+byte activeUsers = 0;
 
 //// DEFINE TIMEOUTS FOR ALERT TRIGGERING ////
 #define DOORTIMEOUT 120 // Number of seconds door must be open continuously before triggering SMS alert
@@ -48,11 +43,11 @@ const boolean debugMode = true;
 
 const int gprsRXPin = 2;
 const int gprsTXPin = 3;
-const int gprsPowerPin = 9;
+const int gprsPowerPin = 4;
 const int sdSlaveSelect = 10;
 const int doorPin = 2;
 
-byte userCount = 0;
+String currentDateTime;
 
 SoftwareSerial gprsSerial(gprsRXPin, gprsTXPin);
 
@@ -67,80 +62,46 @@ void setup() {
   //if (!SD.begin(sdSlaveSelect)) programError(2);
   //if (debugMode) Serial.println(F("SD card initiated."));
 
-  if (user0[0] != 'x') userCount++;
-  if (user1[0] != 'x') userCount++;
-  if (user2[0] != 'x') userCount++;
-  if (user3[0] != 'x') userCount++;
-  if (user4[0] != 'x') userCount++;
-  if (user5[0] != 'x') userCount++;
-
-  Serial.println(userCount);
+  byte addressbookSize = (sizeof(userNumbers) / 2);
+  for (int x = 0; x < addressbookSize; x++) {
+    String tempStore = String(userNumbers[x]);
+    char firstChar = tempStore.charAt(0);
+    if (firstChar != 'x') activeUsers++;
+  }
 }
 
 void loop() {
-  /*boolean activeWarning = false;
+  boolean activeWarning = false;
   boolean doorState = false;
   boolean doorLastState = false;
   byte warningCode = 0;
   unsigned long timeoutStart = millis();
   while (!activeWarning) {
-    // MONITOR CONDITIONS
-    // IF CONDITIONS DRIFT PAST THRESHOLD, START TIMER AND MONITOR CLOSELY
-    // IF CONDITION TIMER ELAPSES BEFORE CONDITIONS NORMALIZE, TRIGGER ACTIVE WARNING BOOLEAN AND SET WARNING CODE
+    getDateTime();
+    sdLogData();
     for ( ; (millis() - timeoutStart) < doorTimeout; ) {
-      if (digitalRead(doorPin) == true) doorState = true;
-      else doorState = false;
-
-      if (doorLastState != doorState) timeoutStart = millis();
-      doorLastState = doorState;
+      if (digitalRead(doorPin) == true) timeoutStart = millis();
+      delay(10);
     }
     warningCode = 1;
     activeWarning = true;
-    gprsSMSWarning(warningCode);
   }
+  gprsSMSWarning(warningCode);
+  activeWarning = false;
   // RESPOND TO ACTIVE WARNING APPROPRIATELY BASED ON WARNING CODE
   // ENTER EMERGENCY MONITORING AND LOGGING STATE UNTIL CONDITIONS NORMALIZE
   // RESET ACTIVE WARNING BOOLEAN WHEN CONDITIONS NORMALIZE
-  // RETURN TO MAIN LOOP*/
+  // RETURN TO MAIN LOOP
 }
 
 // Send warning as SMS message. Error type defined as byte argument.
 void gprsSMSWarning(byte warningCode) {
-  boolean smsReady = false;
+  String warningMessage;
   switch (warningCode) {
     case 0:
       break;
     case 1:
-      gprsSerial.println(F("AT+CMGF=1"));
-      delay(100);
-      gprsSerial.print(F("AT+CMGS=\"+1"));
-      delay(100);
-      //// TEMPORARY METHOD ////
-      for (int i = 0; i < 10; i++) {
-        gprsSerial.print(user0[i]);
-        delay(100);
-      }
-      /////////////////////////
-      //gprsSerial.println(F("\""));
-      //delay(100);
-      //gprsSerial.println(F("Buzzer activated."));
-      //delay(100);
-      gprsSerial.println((char)26);
-      delay(100);
-      gprsSerial.flush();
-
-      if (!gprsSerial.available()) {
-        while (!gprsSerial.available()) {
-          delay(10);
-        }
-      }
-      gprsSerialFlush(false);
-      if (!gprsSerial.available()) {
-        while (!gprsSerial.available()) {
-          delay(10);
-        }
-      }
-      gprsSerialFlush(false);
+      warningMessage = "Alert: Bottom incubator door has been open for more than 2 minutes!";
       break;
     case 2:
       break;
@@ -149,11 +110,59 @@ void gprsSMSWarning(byte warningCode) {
     default:
       break;
   }
-  if (smsReady) {
-    /*  INSERT APPROPRIATE AT COMMANDS TO SEND SMS  */
-    //gprsSerial.print();
-    //etc.
+  gprsSerial.print(F("AT+CMGS=\"+1"));
+  delay(100);
+  for (int i = 0; i < activeUsers; i++) {
+    gprsSerial.print(userNumbers[i]);
+    delay(100);
+    gprsSerial.println(F("\""));
+    delay(100);
+    gprsSerial.println(warningMessage);
+    delay(100);
+    gprsSerial.println((char)26);
+    delay(100);
+    gprsSerial.flush();
+    if (!gprsSerial.available()) {
+      while (!gprsSerial.available()) {
+        delay(10);
+      }
+    }
+    gprsSerialFlush(false);
+    if (!gprsSerial.available()) {
+      while (!gprsSerial.available()) {
+        delay(10);
+      }
+    }
+    gprsSerialFlush(false);
   }
+}
+
+// Assemble current date/time for log timestamp
+void getDateTime() {
+  currentDateTime = "";
+
+  currentDateTime += month();
+  currentDateTime += "/";
+  currentDateTime += day();
+  currentDateTime += "/";
+  currentDateTime += year();
+  currentDateTime += ",";
+  currentDateTime += formatDigits(hour());
+  currentDateTime += ":";
+  currentDateTime += formatDigits(minute());
+  currentDateTime += ":";
+  currentDateTime += formatDigits(second());
+}
+// Format data during date/time assembly and return to main function
+String formatDigits(int digits) {
+  String formattedDigits = "";
+  if (digits < 10) {
+    formattedDigits += '0';
+    formattedDigits += digits;
+  }
+  else formattedDigits += digits;
+
+  return formattedDigits;
 }
 
 // Perform software power-on of GPRS. Send AT commands to set appropriate paramaters for normal operation.
@@ -166,12 +175,14 @@ void gprsStartup() {
   delay(100);
 
   if (!gprsSerial.available()) {
+    unsigned long startTime = millis();
     while (!gprsSerial.available()) {
+      if ((millis() - startTime) > 10000) break;
       delay(10);
     }
   }
-  if (debugMode) gprsSerialFlush(false);
-  else gprsSerialFlush(true);
+  if (debugMode) gprsSerialFlush(true);
+  else gprsSerialFlush(false);
 
   // Configure GPRS output for proper parsing
   gprsSerial.println(F("ATE0"));
@@ -192,6 +203,10 @@ void gprsSerialFlush(boolean serialPrint) {
     delay(10);
     if (!gprsSerial.available()) delay(2500);
   }
+}
+
+void sdLogData() {
+  // LOG DATA HERE
 }
 
 // Trigger program halt in the event of an unrecoverable error. Error type defined as byte argument.
