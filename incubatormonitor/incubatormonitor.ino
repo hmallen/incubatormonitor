@@ -16,6 +16,11 @@ TO DO:
 - Add timestamp to SD log
 - Add all analog inputs for recorder data acquisition
 
+SMS Types (smsSent):
+0 = None
+1 = Door open duration passed threshold
+2 = Upper incubator alarm
+3 = Lower incubator alarmt
 */
 
 #include <SPI.h>
@@ -30,6 +35,7 @@ boolean lowerIncubator = true;  // Set as true if lower incubator to be monitore
 //// DEFINE TIMEOUTS FOR ALERT AND LOG TRIGGERING ////
 #define DOORTIMEOUT 120 // Number of seconds door must be open continuously before triggering SMS alert
 #define LOGFREQUENCY 5  // Frequency in minutes that environmental data is logged to SD card
+#define ALERTTRIGGERTIME 60 // Time in seconds that any alert must be persistently present to trigger SMS alert
 
 const unsigned long logFrequency = LOGFREQUENCY * 60000;
 
@@ -52,7 +58,11 @@ const int gprsRXPin = 2;
 const int gprsTXPin = 3;
 const int gprsPowerPin = 4;
 const int sdSlaveSelect = 10;
-const int doorPin = 2;
+
+const int upperDoorPin = 5;
+const int lowerDoorPin = 6;
+const int upperAlarmPin = 7;
+const int lowerAlarmPin = 8;
 
 const int upperCO2Pin = A0;
 const int upperRHPin = A1;
@@ -64,21 +74,40 @@ const int lowerTempPin = A5;
 float upperCO2, upperRH, upperTempC, upperTempF;
 float lowerCO2, lowerRH, lowerTempC, lowerTempF;
 
+boolean alertType[] = {false, false, false, false};  // 1st = Upper incubator door, 2nd = Lower incubator door, 3rd = Upper incubator alarm, 4th = Lower incubator alarm
+
 String currentDateTime;
 
+boolean smsSent[] = {false, false, false, false};  // 1st = Upper incubator door, 2nd = Lower incubator door, 3rd = Upper incubator alarm, 4th = Lower incubator alarm
+
+boolean upperDoorTrigger = false;
+boolean lowerDoorTrigger = false;
+boolean upperAlarmTrigger = false;
+boolean lowerAlarmTrigger = false;
+unsigned long upperDoorStart, lowerDoorStart, upperAlarmStart, lowerAlarmStart;
+
 SoftwareSerial gprsSerial(gprsRXPin, gprsTXPin);
+
+File logFile;
 
 void setup() {
   Serial.begin(19200);
 
   pinMode(gprsPowerPin, OUTPUT);
   pinMode(sdSlaveSelect, OUTPUT);
+  pinMode(upperDoorPin, INPUT);
+  pinMode(lowerDoorPin, INPUT);
+  pinMode(upperAlarmPin, INPUT);
+  pinMode(lowerAlarmPin, INPUT);
+
+  digitalWrite(gprsPowerPin, LOW);
 
   gprsSerial.begin(19200);
   gprsStartup();
   if (debugMode) Serial.println(F("GPRS initiated."));
   if (!SD.begin(sdSlaveSelect)) programError(2);
   if (debugMode) Serial.println(F("SD card initiated."));
+  logFile = SD.open("incubatorlog.txt", FILE_WRITE);
 
   analogReference(INTERNAL);
   delay(1000);
@@ -108,36 +137,15 @@ void setup() {
     char firstChar = tempStore.charAt(0);
     if (firstChar != 'x') activeUsers++;
   }
+
+  // WRITE HEADER TO LOG FILE
 }
 
-/*void loop() {
-  boolean activeWarning = false;
-  boolean doorState = false;
-  boolean doorLastState = false;
-  byte warningCode = 0;
-  unsigned long timeoutStart = millis();
-  while (!activeWarning) {
-    getDateTime();
-    sdLogData();
-    for ( ; (millis() - timeoutStart) < doorTimeout; ) {
-      if (digitalRead(doorPin) == true) timeoutStart = millis();
-      delay(10);
-    }
-    warningCode = 1;
-    activeWarning = true;
-  }
-  gprsSMSWarning(warningCode);
-  activeWarning = false;
-  // RESPOND TO ACTIVE WARNING APPROPRIATELY BASED ON WARNING CODE
-  // ENTER EMERGENCY MONITORING AND LOGGING STATE UNTIL CONDITIONS NORMALIZE
-  // RESET ACTIVE WARNING BOOLEAN WHEN CONDITIONS NORMALIZE
-  // RETURN TO MAIN LOOP
-}*/
-
 void loop() {
-  boolean activeWarning = false;
+  /*boolean activeWarning = false;
   boolean eventTrigger = false;
   byte warningCode = 0;
+
   for (unsigned long monitorStart = millis(); (millis() - monitorStart) < logFrequency; ) {
     if (eventTrigger == false && digitalRead(doorPin) == 1) {
       unsigned long doorOpenStart = millis();
@@ -150,6 +158,90 @@ void loop() {
         }
         delay(100);
       }
+    }
+  }*/
+
+  for (unsigned long monitorStart = millis(); (millis() - monitorStart) < logFrequency; ) {
+    doorCheck();
+    alarmCheck();
+    for (int x = 0; x < 4; x++) {
+      if (alertType[x] == true) {
+        responseCheck();
+        break;
+      }
+    }
+    delay(5000);
+  }
+  getRecorderData();
+  sdLogData(0, false);
+}
+
+// Check door state (open or closed) and set appropriate timers, booleans, etc.
+void doorCheck() {
+  // Upper door
+  if (digitalRead(upperDoorPin) == 1 && upperDoorTrigger == false) {
+    if (upperDoorTrigger == false) {
+      upperDoorStart = millis();
+      upperDoorTrigger = true;
+    }
+    else if ((millis() - upperDoorStart) > ALERTTRIGGERTIME) alertType[0] = true;
+  }
+  else if (alertType[0] == true) {
+    alertType[0] = false;
+    upperDoorTrigger = false;
+  }
+  // Lower door
+  if (digitalRead(lowerDoorPin) == 1 && lowerDoorTrigger == false) {
+    if (lowerDoorTrigger == false) {
+      lowerDoorStart = millis();
+      lowerDoorTrigger = true;
+    }
+    else if ((millis() - lowerDoorStart) > ALERTTRIGGERTIME) alertType[1] = true;
+  }
+  else if (alertType[1] == true) {
+    alertType[1] = false;
+    lowerDoorTrigger = false;
+  }
+}
+
+// Check alarms
+void alarmCheck() {
+  /*if (digitalRead(upperAlarmPin) == 1) alertType[2] = true;
+  else alertType[2] = false;
+  if (digitalRead(lowerAlarmPin) == 1) alertType[3] = true;
+  else alertType[3] = false;*/
+
+  // Upper alarm
+  if (digitalRead(upperAlarmPin) == 1 && upperAlarmTrigger == false) {
+    if (upperAlarmTrigger == false) {
+      upperAlarmStart = millis();
+      upperAlarmTrigger = true;
+    }
+    else if ((millis() - upperAlarmStart) > ALERTTRIGGERTIME) alertType[2] = true;
+  }
+  else if (alertType[2] == true) {
+    alertType[2] = false;
+    upperAlarmTrigger = false;
+  }
+  // Lower alarm
+  if (digitalRead(lowerAlarmPin) == 1 && lowerAlarmTrigger == false) {
+    if (lowerAlarmTrigger == false) {
+      lowerAlarmStart = millis();
+      lowerAlarmTrigger = true;
+    }
+    else if ((millis() - lowerAlarmStart) > ALERTTRIGGERTIME) alertType[3] = true;
+  }
+  else if (alertType[3] == true) {
+    alertType[1] = false;
+    lowerAlarmTrigger = false;
+  }
+}
+
+void responseCheck() {
+  for (int x = 0; x < 4; x++) {
+    if (alertType[x] == true && smsSent[x] == false) {
+      gprsSMSWarning((x + 1));
+      smsSent[x] = true;
     }
   }
 }
@@ -183,11 +275,16 @@ void gprsSMSWarning(byte warningCode) {
     case 0:
       break;
     case 1:
-      warningMessage = "Alert: Bottom incubator door has been open for more than 2 minutes!";
+      warningMessage = "Alert: Upper incubator door has been open for more than DOORTIMEOUT seconds!";
       break;
     case 2:
+      warningMessage = "Alert: Lower incubator door has been open for more than DOORTIMEOUT seconds!";
       break;
     case 3:
+      warningMessage = "Alert: Upper incubator alarm is active!";
+      break;
+    case 4:
+      warningMessage = "Alert: Lower incubator alarm is active!";
       break;
     default:
       break;
@@ -217,6 +314,7 @@ void gprsSMSWarning(byte warningCode) {
     }
     gprsSerialFlush(false);
   }
+  smsSent[0] = true;  // Door open time passed threshold
 }
 
 // Assemble current date/time for log timestamp
@@ -251,8 +349,6 @@ String formatDigits(int digits) {
 
 // Perform software power-on of GPRS. Send AT commands to set appropriate paramaters for normal operation.
 void gprsStartup() {
-  digitalWrite(gprsPowerPin, LOW);
-  delay(100);
   digitalWrite(gprsPowerPin, HIGH);
   delay(500);
   digitalWrite(gprsPowerPin, LOW);
@@ -358,12 +454,12 @@ void gprsSerialFlush(boolean serialPrint) {
 }
 
 // Log data from incubator sensors. True = Log active warning / False = Regular sensor data logging
-void sdLogData(boolean logWarning) {
+void sdLogData(byte dataType, boolean logWarning) {
   if (!logWarning) {
-    
+    // Log recorder data normally
   }
   else {
-    
+    // Log alert event or cessation of alert
   }
 }
 
