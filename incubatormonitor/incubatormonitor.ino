@@ -136,27 +136,21 @@ void setup() {
 
 void loop() {
   boolean activeWarning = false;
-  boolean eventTimer = false;
+  boolean eventTrigger = false;
   byte warningCode = 0;
   for (unsigned long monitorStart = millis(); (millis() - monitorStart) < logFrequency; ) {
-    if (eventTimer == false && digitalRead(doorPin) == 1) {
+    if (eventTrigger == false && digitalRead(doorPin) == 1) {
       unsigned long doorOpenStart = millis();
-      eventTimer = true;
+      eventTrigger = true;
+      // LOG DOOR OPEN
+      for (unsigned long doorOpenStart = millis(); (millis() - doorOpenStart) < DOORTIMEOUT; ) {
+        if (digitalRead(doorPin) == 0) {
+          eventTrigger = false;
+          break;
+        }
+        delay(100);
+      }
     }
-    else if (eventTimer == true && (millis() - doorOpenStart) > DOORTIMEOUT) {
-      
-    }
-    /* Alerts & Monitoring */
-    // Door
-    // RJ-11 Warnings:
-    // - CO2
-    // - RH
-    // - Temp
-    
-  }
-  if (!activeWarning) sdLogData(false);
-  else {
-    // RESPOND TO WARNING
   }
 }
 
