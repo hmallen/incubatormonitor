@@ -142,25 +142,6 @@ void setup() {
 }
 
 void loop() {
-  /*boolean activeWarning = false;
-  boolean eventTrigger = false;
-  byte warningCode = 0;
-
-  for (unsigned long monitorStart = millis(); (millis() - monitorStart) < logFrequency; ) {
-    if (eventTrigger == false && digitalRead(doorPin) == 1) {
-      unsigned long doorOpenStart = millis();
-      eventTrigger = true;
-      // LOG DOOR OPEN
-      for (unsigned long doorOpenStart = millis(); (millis() - doorOpenStart) < DOORTIMEOUT; ) {
-        if (digitalRead(doorPin) == 0) {
-          eventTrigger = false;
-          break;
-        }
-        delay(100);
-      }
-    }
-  }*/
-
   for (unsigned long monitorStart = millis(); (millis() - monitorStart) < logFrequency; ) {
     doorCheck();
     alarmCheck();
