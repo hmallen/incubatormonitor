@@ -11,7 +11,7 @@ conditions drift significantly out of range. This includes both
 environmental conditions and extended period with door open.
 
 TO DO:
-- Add time acquisition on startup to use for log timestamp
+- Add time acquisition on startup to use for log timestamp ****
 - Add SD logging
 - Add timestamp to SD log
 - Add all analog inputs for recorder data acquisition
@@ -20,7 +20,7 @@ SMS Types (smsSent):
 0 = None
 1 = Door open duration passed threshold
 2 = Upper incubator alarm
-3 = Lower incubator alarmt
+3 = Lower incubator alarm
 */
 
 #include <SPI.h>
@@ -75,16 +75,14 @@ float upperCO2, upperRH, upperTempC, upperTempF;
 float lowerCO2, lowerRH, lowerTempC, lowerTempF;
 
 boolean alertType[] = {false, false, false, false};  // 1st = Upper incubator door, 2nd = Lower incubator door, 3rd = Upper incubator alarm, 4th = Lower incubator alarm
-
-String currentDateTime;
-
 boolean smsSent[] = {false, false, false, false};  // 1st = Upper incubator door, 2nd = Lower incubator door, 3rd = Upper incubator alarm, 4th = Lower incubator alarm
 
 boolean upperDoorTrigger = false;
 boolean lowerDoorTrigger = false;
 boolean upperAlarmTrigger = false;
 boolean lowerAlarmTrigger = false;
-unsigned long upperDoorStart, lowerDoorStart, upperAlarmStart, lowerAlarmStart;
+unsigned long upperDoorStart, upperAlarmStart;
+unsigned long lowerDoorStart, lowerAlarmStart;
 
 SoftwareSerial gprsSerial(gprsRXPin, gprsTXPin);
 
@@ -137,8 +135,11 @@ void setup() {
     char firstChar = tempStore.charAt(0);
     if (firstChar != 'x') activeUsers++;
   }
-
-  // WRITE HEADER TO LOG FILE
+  if (logFile) {
+    logFile.println(F("Time, Date, U-CO2, U-RH, U-Temp(F), U-Door, U-Alarm, L-CO2, L-RH, L-Temp(F), L-Door, L-Alarm"));
+    logFile.close();
+  }
+  else {}// Generate header write error?
 }
 
 void loop() {
@@ -155,76 +156,6 @@ void loop() {
   }
   getRecorderData();
   sdLogData(0, false);
-}
-
-// Check door state (open or closed) and set appropriate timers, booleans, etc.
-void doorCheck() {
-  // Upper door
-  if (digitalRead(upperDoorPin) == 1 && upperDoorTrigger == false) {
-    if (upperDoorTrigger == false) {
-      upperDoorStart = millis();
-      upperDoorTrigger = true;
-    }
-    else if ((millis() - upperDoorStart) > ALERTTRIGGERTIME) alertType[0] = true;
-  }
-  else if (alertType[0] == true) {
-    alertType[0] = false;
-    upperDoorTrigger = false;
-  }
-  // Lower door
-  if (digitalRead(lowerDoorPin) == 1 && lowerDoorTrigger == false) {
-    if (lowerDoorTrigger == false) {
-      lowerDoorStart = millis();
-      lowerDoorTrigger = true;
-    }
-    else if ((millis() - lowerDoorStart) > ALERTTRIGGERTIME) alertType[1] = true;
-  }
-  else if (alertType[1] == true) {
-    alertType[1] = false;
-    lowerDoorTrigger = false;
-  }
-}
-
-// Check alarms
-void alarmCheck() {
-  /*if (digitalRead(upperAlarmPin) == 1) alertType[2] = true;
-  else alertType[2] = false;
-  if (digitalRead(lowerAlarmPin) == 1) alertType[3] = true;
-  else alertType[3] = false;*/
-
-  // Upper alarm
-  if (digitalRead(upperAlarmPin) == 1 && upperAlarmTrigger == false) {
-    if (upperAlarmTrigger == false) {
-      upperAlarmStart = millis();
-      upperAlarmTrigger = true;
-    }
-    else if ((millis() - upperAlarmStart) > ALERTTRIGGERTIME) alertType[2] = true;
-  }
-  else if (alertType[2] == true) {
-    alertType[2] = false;
-    upperAlarmTrigger = false;
-  }
-  // Lower alarm
-  if (digitalRead(lowerAlarmPin) == 1 && lowerAlarmTrigger == false) {
-    if (lowerAlarmTrigger == false) {
-      lowerAlarmStart = millis();
-      lowerAlarmTrigger = true;
-    }
-    else if ((millis() - lowerAlarmStart) > ALERTTRIGGERTIME) alertType[3] = true;
-  }
-  else if (alertType[3] == true) {
-    alertType[1] = false;
-    lowerAlarmTrigger = false;
-  }
-}
-
-void responseCheck() {
-  for (int x = 0; x < 4; x++) {
-    if (alertType[x] == true && smsSent[x] == false) {
-      gprsSMSWarning((x + 1));
-      smsSent[x] = true;
-    }
-  }
 }
 
 // Acquire and map data from external recorder outputs on back of incubators (Upper & Lower)
@@ -249,10 +180,123 @@ void getRecorderData() {
   }
 }
 
+// Check door state (open or closed) and set appropriate timers, booleans, etc.
+void doorCheck() {
+  // Upper door
+  if (digitalRead(upperDoorPin) == 1) {
+    if (upperDoorTrigger == false) {
+      upperDoorStart = millis();
+      upperDoorTrigger = true;
+    }
+    else if ((millis() - upperDoorStart) > ALERTTRIGGERTIME) alertType[0] = true;
+  }
+  else if (alertType[0] == true) {
+    alertType[0] = false;
+    upperDoorTrigger = false;
+  }
+  // Lower door
+  if (digitalRead(lowerDoorPin) == 1) {
+    if (lowerDoorTrigger == false) {
+      lowerDoorStart = millis();
+      lowerDoorTrigger = true;
+    }
+    else if ((millis() - lowerDoorStart) > ALERTTRIGGERTIME) alertType[1] = true;
+  }
+  else if (alertType[1] == true) {
+    alertType[1] = false;
+    lowerDoorTrigger = false;
+  }
+}
+
+// Check alarms
+void alarmCheck() {
+  /*if (digitalRead(upperAlarmPin) == 1) alertType[2] = true;
+  else alertType[2] = false;
+  if (digitalRead(lowerAlarmPin) == 1) alertType[3] = true;
+  else alertType[3] = false;*/
+
+  // Upper alarm
+  if (digitalRead(upperAlarmPin) == 1) {
+    if (upperAlarmTrigger == false) {
+      upperAlarmStart = millis();
+      upperAlarmTrigger = true;
+    }
+    else if ((millis() - upperAlarmStart) > ALERTTRIGGERTIME) alertType[2] = true;
+  }
+  else if (alertType[2] == true) {
+    alertType[2] = false;
+    upperAlarmTrigger = false;
+  }
+  // Lower alarm
+  if (digitalRead(lowerAlarmPin) == 1) {
+    if (lowerAlarmTrigger == false) {
+      lowerAlarmStart = millis();
+      lowerAlarmTrigger = true;
+    }
+    else if ((millis() - lowerAlarmStart) > ALERTTRIGGERTIME) alertType[3] = true;
+  }
+  else if (alertType[3] == true) {
+    alertType[1] = false;
+    lowerAlarmTrigger = false;
+  }
+}
+
+void responseCheck() {
+  for (int x = 0; x < 4; x++) {
+    if (alertType[x] == true && smsSent[x] == false) {
+      gprsSMSAlert((x + 1));
+      smsSent[x] = true;
+    }
+  }
+}
+
+// Log data from incubator sensors. True = Log active warning / False = Regular sensor data logging
+void sdLogData(byte dataType, boolean logWarning) {
+  if (logFile) {
+    if (upperIncubator) {
+      String upperIncubatorData = getDateTime();
+      upperIncubatorData += ',';
+      if (lowerIncubator) String lowerIncubatorData = upperIncubatorData;
+      upperIncubatorData += String(upperCO2) + ',' + String(upperRH) + ',' + String(upperTempF) + ',';
+      upperIncubatorData += String(upperDoor) + ',' + String(upperAlarm);
+    }
+    if (lowerIncubator) {
+      lowerIncubatorData += String(lowerCO2) + ',' + String(lowerRH) + ',' + String(lowerTempF) + ','
+      lowerIncubatorData += String(lowerDoor) + ',' + String(lowerAlarm);
+    }
+    if (!logWarning) {
+
+    }
+    else {
+      // Log alert event or cessation of alert
+    }
+  }
+  else {}  // Generate data log write error?
+}
+
+// Assemble current date/time for log timestamp
+String getDateTime() {
+  String currentDateTime = "";
+
+  currentDateTime += formatDigits(hour());
+  currentDateTime += ":";
+  currentDateTime += formatDigits(minute());
+  currentDateTime += ":";
+  currentDateTime += formatDigits(second());
+  currentDateTime += ",";
+  currentDateTime += formatDigits(month());
+  currentDateTime += "/";
+  currentDateTime += formatDigits(day());
+  currentDateTime += "/";
+  currentDateTime += formatDigits(year());
+
+  return currentDateTime;
+}
+
 // Send warning as SMS message. Error type defined as byte argument.
-void gprsSMSWarning(byte warningCode) {
+void gprsSMSAlert(byte alertCode) {
   String warningMessage;
-  switch (warningCode) {
+  switch (alertCode) {
     case 0:
       break;
     case 1:
@@ -298,24 +342,6 @@ void gprsSMSWarning(byte warningCode) {
   smsSent[0] = true;  // Door open time passed threshold
 }
 
-// Assemble current date/time for log timestamp
-String getDateTime() {
-  currentDateTime = "";
-
-  currentDateTime += formatDigits(hour());
-  currentDateTime += ":";
-  currentDateTime += formatDigits(minute());
-  currentDateTime += ":";
-  currentDateTime += formatDigits(second());
-  currentDateTime += ",";
-  currentDateTime += formatDigits(month());
-  currentDateTime += "/";
-  currentDateTime += formatDigits(day());
-  currentDateTime += "/";
-  currentDateTime += formatDigits(year());
-
-  return currentDateTime;
-}
 // Format data during date/time assembly and return to main function
 String formatDigits(int digits) {
   String formattedDigits = "";
@@ -431,16 +457,6 @@ void gprsSerialFlush(boolean serialPrint) {
     if (serialPrint) Serial.print(c);
     delay(10);
     if (!gprsSerial.available()) delay(2500);
-  }
-}
-
-// Log data from incubator sensors. True = Log active warning / False = Regular sensor data logging
-void sdLogData(byte dataType, boolean logWarning) {
-  if (!logWarning) {
-    // Log recorder data normally
-  }
-  else {
-    // Log alert event or cessation of alert
   }
 }
 
