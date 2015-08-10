@@ -71,6 +71,9 @@ const int lowerCO2Pin = A3;
 const int lowerRHPin = A4;
 const int lowerTempPin = A5;
 
+boolean upperDoorState, upperAlarmState;
+boolean lowerDoorState, lowerAlarmState;
+
 float upperCO2, upperRH, upperTempC, upperTempF;
 float lowerCO2, lowerRH, lowerTempC, lowerTempF;
 
@@ -182,29 +185,35 @@ void getRecorderData() {
 
 // Check door state (open or closed) and set appropriate timers, booleans, etc.
 void doorCheck() {
-  // Upper door
-  if (digitalRead(upperDoorPin) == 1) {
-    if (upperDoorTrigger == false) {
-      upperDoorStart = millis();
-      upperDoorTrigger = true;
+  if (upperIncubator) {
+    upperDoorState = digitalRead(upperDoorPin);
+    // Upper door
+    if (upperDoorState) {
+      if (upperDoorTrigger == false) {
+        upperDoorStart = millis();
+        upperDoorTrigger = true;
+      }
+      else if ((millis() - upperDoorStart) > ALERTTRIGGERTIME) alertType[0] = true;
     }
-    else if ((millis() - upperDoorStart) > ALERTTRIGGERTIME) alertType[0] = true;
-  }
-  else if (alertType[0] == true) {
-    alertType[0] = false;
-    upperDoorTrigger = false;
-  }
-  // Lower door
-  if (digitalRead(lowerDoorPin) == 1) {
-    if (lowerDoorTrigger == false) {
-      lowerDoorStart = millis();
-      lowerDoorTrigger = true;
+    else if (alertType[0] == true) {
+      alertType[0] = false;
+      upperDoorTrigger = false;
     }
-    else if ((millis() - lowerDoorStart) > ALERTTRIGGERTIME) alertType[1] = true;
   }
-  else if (alertType[1] == true) {
-    alertType[1] = false;
-    lowerDoorTrigger = false;
+  if (lowerIncubator) {
+    lowerDoorState = digitalRead(lowerDoorPin);
+    // Lower door
+    if (lowerDoorState) {
+      if (lowerDoorTrigger == false) {
+        lowerDoorStart = millis();
+        lowerDoorTrigger = true;
+      }
+      else if ((millis() - lowerDoorStart) > ALERTTRIGGERTIME) alertType[1] = true;
+    }
+    else if (alertType[1] == true) {
+      alertType[1] = false;
+      lowerDoorTrigger = false;
+    }
   }
 }
 
@@ -214,30 +223,35 @@ void alarmCheck() {
   else alertType[2] = false;
   if (digitalRead(lowerAlarmPin) == 1) alertType[3] = true;
   else alertType[3] = false;*/
-
-  // Upper alarm
-  if (digitalRead(upperAlarmPin) == 1) {
-    if (upperAlarmTrigger == false) {
-      upperAlarmStart = millis();
-      upperAlarmTrigger = true;
+  if (upperIncubator) {
+    upperAlarmState = digitalRead(upperAlarmPin);
+    // Upper alarm
+    if (upperAlarmState) {
+      if (upperAlarmTrigger == false) {
+        upperAlarmStart = millis();
+        upperAlarmTrigger = true;
+      }
+      else if ((millis() - upperAlarmStart) > ALERTTRIGGERTIME) alertType[2] = true;
     }
-    else if ((millis() - upperAlarmStart) > ALERTTRIGGERTIME) alertType[2] = true;
-  }
-  else if (alertType[2] == true) {
-    alertType[2] = false;
-    upperAlarmTrigger = false;
-  }
-  // Lower alarm
-  if (digitalRead(lowerAlarmPin) == 1) {
-    if (lowerAlarmTrigger == false) {
-      lowerAlarmStart = millis();
-      lowerAlarmTrigger = true;
+    else if (alertType[2] == true) {
+      alertType[2] = false;
+      upperAlarmTrigger = false;
     }
-    else if ((millis() - lowerAlarmStart) > ALERTTRIGGERTIME) alertType[3] = true;
   }
-  else if (alertType[3] == true) {
-    alertType[1] = false;
-    lowerAlarmTrigger = false;
+  if (lowerIncubator) {
+    lowerAlarmState = digitalRead(lowerAlarmPin);
+    // Lower alarm
+    if (lowerAlarmState) {
+      if (lowerAlarmTrigger == false) {
+        lowerAlarmStart = millis();
+        lowerAlarmTrigger = true;
+      }
+      else if ((millis() - lowerAlarmStart) > ALERTTRIGGERTIME) alertType[3] = true;
+    }
+    else if (alertType[3] == true) {
+      alertType[1] = false;
+      lowerAlarmTrigger = false;
+    }
   }
 }
 
@@ -252,17 +266,18 @@ void responseCheck() {
 
 // Log data from incubator sensors. True = Log active warning / False = Regular sensor data logging
 void sdLogData(byte dataType, boolean logWarning) {
+  String upperIncubatorData, lowerIncubatorData;
+  String currentDateTime = getDateTime();
   if (logFile) {
     if (upperIncubator) {
-      String upperIncubatorData = getDateTime();
-      upperIncubatorData += ',';
-      if (lowerIncubator) String lowerIncubatorData = upperIncubatorData;
+      upperIncubatorData = currentDateTime + ',';
       upperIncubatorData += String(upperCO2) + ',' + String(upperRH) + ',' + String(upperTempF) + ',';
-      upperIncubatorData += String(upperDoor) + ',' + String(upperAlarm);
+      upperIncubatorData += String(upperDoorState) + ',' + String(upperAlarmState);
     }
     if (lowerIncubator) {
-      lowerIncubatorData += String(lowerCO2) + ',' + String(lowerRH) + ',' + String(lowerTempF) + ','
-      lowerIncubatorData += String(lowerDoor) + ',' + String(lowerAlarm);
+      lowerIncubatorData = currentDateTime + ',';
+      lowerIncubatorData += String(lowerCO2) + ',' + String(lowerRH) + ',' + String(lowerTempF) + ',';
+      lowerIncubatorData += String(lowerDoorState) + ',' + String(lowerAlarmState);
     }
     if (!logWarning) {
 
